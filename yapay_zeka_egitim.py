@@ -1,4 +1,4 @@
-import os
+"""import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -201,4 +201,4 @@ if __name__ == "__main__":
 
     print("\n🎉 EĞİTİM TAMAMLANDI! Model emlak fiyatlarını öğrendi.")
     torch.save(model.state_dict(), "emlak_kahini_modeli.pth")
-    print("💾 Modelin zekası 'emlak_kahini_modeli.pth' dosyasına kaydedildi!")
+    print("💾 Modelin zekası 'emlak_kahini_modeli.pth' dosyasına kaydedildi!")"""
