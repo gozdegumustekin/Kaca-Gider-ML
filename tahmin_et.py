@@ -1,4 +1,4 @@
-import os
+"""import os
 import torch
 import torch.nn as nn
 import pandas as pd
@@ -116,4 +116,4 @@ if __name__ == "__main__":
     
     fark = abs(gercek_fiyat - tahmini_fiyat_tl)
     print(f"📊 Yanılma Payı:        {fark:,.0f} TL")
-    print("-" * 40)
+    print("-" * 40)"""
