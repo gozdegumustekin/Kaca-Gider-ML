@@ -94,7 +94,7 @@ def linkleri_topla(driver, arama_sayfasi_url):
 # 3. STRATEJİ BELİRLEME
 hedef_link = [
     # --- MERKEZ & BÜYÜK İLÇELER ---
-    "https://www.sahibinden.com/satilik/canakkale-gokceada?pagingSize=50&sorting=price_desc"
+    "https://www.sahibinden.com/satilik-daire/canakkale-gokceada?pagingSize=50&sorting=price_asc"
 ]
 
 tum_ilan_linkleri = []
