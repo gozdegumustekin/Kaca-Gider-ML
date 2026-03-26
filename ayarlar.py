@@ -1,9 +1,39 @@
 
 TEMEL_SUTUNLAR = [
-    "ilan_id", "il", "ilce", "mahalle", "emlak_tipi", 
-    "fiyat_tl", "metrekare_brut", "metrekare_net", "oda_sayisi", 
-    "bina_yasi", "bulundugu_kat", "kat_sayisi", "isitma", "banyo_sayisi", 
-    "mutfak", "balkon", "asansor", "otopark", "esyali", "fotograf_klasoru"
+    "ilan_id",
+    "il",
+    "ilce",
+    "mahalle",
+    "emlak_tipi",
+    "fiyat_tl",
+
+    "bina_yasi_raw",
+    "bulundugu_kat_raw",
+    "isitma_raw",
+    "isitma_ana_sinif",
+    "mutfak_raw",
+
+    "metrekare_brut",
+    "metrekare_net",
+    "oda_sayisi",
+
+    "bina_yasi_numeric",
+    "bina_yasi_ordinal",
+
+    "bulundugu_kat_no",
+    "bulundugu_kat_ordinal",
+
+    "kat_sayisi",
+    "isitma_score",
+    "banyo_sayisi",
+
+    "mutfak_acik_mi",
+    "balkon",
+    "asansor",
+    "otopark",
+    "esyali",
+
+    "fotograf_klasoru"
 ]
 
 TUM_OZELLIKLER = [
