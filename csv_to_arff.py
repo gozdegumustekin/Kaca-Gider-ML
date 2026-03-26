@@ -34,22 +34,20 @@ RARE_MAHALLE_TOKEN = "Diger_Mahalle"
 
 from ayarlar import TEMEL_SUTUNLAR, TUM_OZELLIKLER, TUM_SUTUNLAR
 
-TEXT_CATEGORICAL_COLUMNS = ["il", "ilce", "mahalle", "emlak_tipi"]
+TEXT_CATEGORICAL_COLUMNS = [
+    "il", "ilce", "mahalle", "emlak_tipi",
+    "bina_yasi_raw", "bulundugu_kat_raw", "isitma_raw", 
+    "isitma_ana_sinif", "mutfak_raw"
+]
 
 BINARY_COLUMNS = ["mutfak", "balkon", "asansor", "otopark", "esyali"] + TUM_OZELLIKLER
 
 NUMERIC_COLUMNS = [
-    "fiyat_tl",
-    "metrekare_brut",
-    "metrekare_net",
-    "oda_sayisi",
-    "bina_yasi",
-    "bulundugu_kat",
-    "kat_sayisi",
-    "isitma",
-    "banyo_sayisi"
+    "fiyat_tl", "metrekare_brut", "metrekare_net", "oda_sayisi", 
+    "bina_yasi", "bulundugu_kat", "kat_sayisi", "isitma", "banyo_sayisi",
+    "bina_yasi_numeric", "bina_yasi_ordinal", "bulundugu_kat_no", 
+    "bulundugu_kat_ordinal", "isitma_score", "mutfak_acik_mi"
 ]
-
 
 print("BASE_DIR:", BASE_DIR)
 
@@ -74,7 +72,6 @@ def clean_attr_name(name: str) -> str:
     name = re.sub(r"\s+", "_", name.strip())
     name = re.sub(r"_+", "_", name)
     return name
-
 
 def clean_nominal_value(val) -> str:
     if pd.isna(val):
@@ -101,7 +98,6 @@ def clean_nominal_value(val) -> str:
 
     return val if val else UNKNOWN_CATEGORY_TOKEN
 
-
 def binary_to_nominal(val) -> str:
     if pd.isna(val):
         return "yok"
@@ -112,7 +108,6 @@ def binary_to_nominal(val) -> str:
         text = str(val).strip().lower()
         return "var" if text in ["1", "var", "evet", "true"] else "yok"
 
-
 def numeric_or_missing(val) -> str:
     if pd.isna(val):
         return "?"
@@ -120,7 +115,6 @@ def numeric_or_missing(val) -> str:
         return str(float(val))
     except Exception:
         return "?"
-
 
 def write_arff(df: pd.DataFrame, arff_path: str, relation_name: str, attribute_schema: list):
     with open(arff_path, "w", encoding="utf-8") as f:
@@ -143,16 +137,15 @@ def write_arff(df: pd.DataFrame, arff_path: str, relation_name: str, attribute_s
                 elif col_type == "numeric":
                     values.append(numeric_or_missing(value))
                 else:
-                    values.append("?")
+                    val_str = str(value).replace('"', "'") if not pd.isna(value) else "?"
+                    values.append(f'"{val_str}"' if val_str != "?" else "?")
 
             f.write(",".join(values) + "\n")
-
 
 def debug_print_section(title: str):
     print("\n" + "=" * 70)
     print(title)
     print("=" * 70)
-
 
 # =========================================================
 # ANA AKIŞ
@@ -160,6 +153,27 @@ def debug_print_section(title: str):
 def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+    debug_print_section("0) CSV DOSYALARINI OKUMA VE BİRLEŞTİRME")
+    tum_dataframeler = []
+    
+    for csv_dosyasi in csv_files:
+        try:
+            gecici_df = pd.read_csv(csv_dosyasi)
+            if not gecici_df.empty:
+                tum_dataframeler.append(gecici_df)
+                print(f"  -> Okundu: {csv_dosyasi.name} ({len(gecici_df)} satır)")
+        except Exception as e:
+            print(f"  -> Atlandı: {csv_dosyasi.name} (Hata: {e})")
+
+    if not tum_dataframeler:
+        print("❌ HİÇBİR CSV DOSYASI OKUNAMADI VEYA KLASÖR BOŞ! İşlem iptal ediliyor.")
+        return
+
+    # Tüm verileri tek bir tabloda birleştiriyoruz (Eksik olan df burada yaratılıyor)
+    df = pd.concat(tum_dataframeler, ignore_index=True)
+    print(f"\n✅ Toplam {len(df)} satırlık birleştirilmiş veri seti başarıyla oluşturuldu.")
+
+    debug_print_section("1) SÜTUN KONTROLÜ")
     missing_expected = [c for c in TUM_SUTUNLAR if c not in df.columns]
     if missing_expected:
         print(f"Beklenen ama CSV'de olmayan sütun sayısı: {len(missing_expected)}")
@@ -205,8 +219,8 @@ def main():
 
     debug_print_section("5) KATEGORİK TEMİZLİK VE MAHALLE GRUPLAMA")
 
-    # Train tarafında temizle
-    for col in ["il", "ilce", "emlak_tipi", "mahalle"]:
+    # Train tarafında TÜM kategorik sütunları temizle (Eski hardcoded liste kaldırıldı)
+    for col in TEXT_CATEGORICAL_COLUMNS:
         if col in train_df.columns:
             train_df[col] = train_df[col].apply(clean_nominal_value)
 
@@ -217,8 +231,8 @@ def main():
             lambda x: x if mahalle_counts[x] >= MIN_MAHALLE_COUNT else RARE_MAHALLE_TOKEN
         )
 
-    # Test tarafında aynı mantık: önce temizle
-    for col in ["il", "ilce", "emlak_tipi", "mahalle"]:
+    # Test tarafında TÜM kategorik sütunları temizle
+    for col in TEXT_CATEGORICAL_COLUMNS:
         if col in test_df.columns:
             test_df[col] = test_df[col].apply(clean_nominal_value)
 
@@ -229,12 +243,16 @@ def main():
             lambda x: x if x in allowed_mahalle else RARE_MAHALLE_TOKEN
         )
 
-    # il, ilce, emlak_tipi için testte train dışı kategori varsa bilinmiyor yap
-    for col in ["il", "ilce", "emlak_tipi"]:
+    # Testte train dışı kategori varsa bilinmiyor yap (Mahalle hariç diğer tüm kategorikler için)
+    for col in TEXT_CATEGORICAL_COLUMNS:
+        if col == "mahalle": 
+            continue
         if col in train_df.columns and col in test_df.columns:
             allowed = set(train_df[col].unique())
             allowed.add(UNKNOWN_CATEGORY_TOKEN)
             test_df[col] = test_df[col].apply(lambda x: x if x in allowed else UNKNOWN_CATEGORY_TOKEN)
+            
+            # Weka'nın hata vermemesi için train setine sembolik bir "bilinmiyor" satırı ekle
             if UNKNOWN_CATEGORY_TOKEN not in train_df[col].unique():
                 train_df.loc[len(train_df)] = train_df.iloc[0].copy()
                 train_df.iloc[-1, train_df.columns.get_loc(col)] = UNKNOWN_CATEGORY_TOKEN
@@ -242,8 +260,6 @@ def main():
 
     if "mahalle" in train_df.columns:
         print(f"Train mahalle kategori sayısı: {train_df['mahalle'].nunique()}")
-        print("İlk 20 train mahalle kategorisi:")
-        print(train_df["mahalle"].value_counts().head(20))
 
     debug_print_section("6) BINARY KOLONLARI {yok,var} YAPMA")
     binary_existing = [c for c in BINARY_COLUMNS if c in train_df.columns]
@@ -328,9 +344,6 @@ def main():
         attribute_schema.append((cleaned_col, attr_type))
 
     print(f"Toplam attribute sayısı: {len(attribute_schema)}")
-    print("İlk 15 attribute:")
-    for a in attribute_schema[:15]:
-        print(a)
 
     debug_print_section("11) TESTTE TRAIN DIŞI KATEGORİ KONTROLÜ")
     for col in TEXT_CATEGORICAL_COLUMNS:
@@ -339,8 +352,6 @@ def main():
             test_set = set(test_df[col].dropna().astype(str).unique())
             diff = sorted(list(test_set - train_set))
             print(f"{col}: testte train dışı kategori sayısı = {len(diff)}")
-            if diff:
-                print("İlk 10:", diff[:10])
 
     debug_print_section("12) ARFF YAZMA")
     write_arff(train_df, TRAIN_ARFF, RELATION_NAME_TRAIN, attribute_schema)
@@ -353,8 +364,6 @@ def main():
     print("Weka'da Explorer > Preprocess > Open file ile train_emlak.arff aç.")
     print("Class olarak son sütun olan fiyat_tl seçili olmalı.")
     print("Evaluate on separate test set kullanacaksan test_emlak.arff dosyasını seç.")
-    print("Train ve test aynı attribute şemasına sahip olacak şekilde üretildi.")
-
 
 if __name__ == "__main__":
     main()
