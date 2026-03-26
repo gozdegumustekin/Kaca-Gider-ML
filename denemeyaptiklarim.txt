@@ -13,4 +13,12 @@
 "Çanakkale / Gökçeada" =
 {
     "https://www.sahibinden.com/satilik/canakkale-gokceada?pagingSize=50&sorting=price_desc" -> 49 veri
-} ]
+    https://www.sahibinden.com/satilik-daire/canakkale-gokceada?pagingSize=50&sorting=price_asc -> 50 veri
+} 
+
+"Çanakkale / Yenice" =
+{
+    "https://www.sahibinden.com/satilik-daire/canakkale-yenice?pagingSize=50" -> 49 veri
+} 
+
+]
