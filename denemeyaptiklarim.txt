@@ -1,1 +1,16 @@
-"https://www.sahibinden.com/satilik-daire/canakkale-merkez/sahibinden?pagingSize=50&sorting=price_asc" -> 46 veri 
+"Satılık"= [
+"Çanakkale / Merkez" =
+{
+    "https://www.sahibinden.com/satilik-daire/canakkale-merkez/sahibinden?pagingSize=50&sorting=price_asc" -> 46 veri,
+    "https://www.sahibinden.com/satilik-daire/canakkale-merkez/sahibinden?pagingSize=50&sorting=price_desc" -> 50 veri
+}
+
+"Çanakkale / Bozcaada" =
+{
+    "https://www.sahibinden.com/satilik/canakkale-bozcaada?pagingSize=50" -> 49 veri
+} 
+
+"Çanakkale / Gökçeada" =
+{
+    "https://www.sahibinden.com/satilik/canakkale-gokceada?pagingSize=50&sorting=price_desc" -> 49 veri
+} ]
