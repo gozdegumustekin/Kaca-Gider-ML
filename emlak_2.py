@@ -94,7 +94,7 @@ def linkleri_topla(driver, arama_sayfasi_url):
 # 3. STRATEJİ BELİRLEME
 hedef_link = [
     # --- MERKEZ & BÜYÜK İLÇELER ---
-    "https://www.sahibinden.com/satilik-daire/canakkale-yenice?pagingSize=50"
+    "https://www.sahibinden.com/satilik-mustakil-ev?pagingSize=50&address_town=594&address_town=595&address_town=596&address_town=592&address_town=593&address_city=43"
 ]
 
 tum_ilan_linkleri = []

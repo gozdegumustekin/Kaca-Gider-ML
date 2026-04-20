@@ -21,4 +21,9 @@
     "https://www.sahibinden.com/satilik-daire/canakkale-yenice?pagingSize=50" -> 49 veri
 } 
 
+"Kütahya / ilçeler" =
+{
+    "https://www.sahibinden.com/satilik/kutahya-merkez/sahibinden?pagingSize=50&sorting=price_asc"
+    "https://www.sahibinden.com/satilik-mustakil-ev?pagingSize=50&address_town=594&address_town=595&address_town=596&address_town=592&address_town=593&address_city=43"
+}
 ]

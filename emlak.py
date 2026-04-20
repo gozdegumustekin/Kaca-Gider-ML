@@ -89,8 +89,9 @@ def linkleri_topla(driver, arama_sayfasi_url):
 # 3. STRATEJİ BELİRLEME / tercihen tek bir linkle başlayarak ilerleyelim, böylece ilk etapta çok fazla veri çekip banlanma riskini azaltırız. Sonrasında yeni linkler ekleyerek devam ederiz.
 hedef_link = [
     # --- MERKEZ & BÜYÜK İLÇELER ---
-    "https://www.sahibinden.com/satilik-daire/canakkale-yenice?pagingSize=50"
+    "https://www.sahibinden.com/satilik/kutahya-merkez/sahibinden?pagingSize=50&sorting=price_asc"
 ]
+
 
 tum_ilan_linkleri = []
 for arama_url in hedef_link:
