@@ -50,7 +50,7 @@ except ImportError:
         "metrekare_brut","metrekare_net","oda_sayisi",
         "bina_yasi_numeric","bina_yasi_ordinal",
         "bulundugu_kat_no","bulundugu_kat_ordinal",
-        "kat_sayisi","isitma_score","banyo_sayisi",
+        "kat_sayisi","banyo_sayisi",
         "mutfak_acik_mi","balkon","asansor","otopark","esyali",
         "fotograf_klasoru"
     ]
@@ -81,6 +81,10 @@ except ImportError:
     ]
     TUM_SUTUNLAR = TEMEL_SUTUNLAR + TUM_OZELLIKLER
 
+# Öznel/elle üretilmiş ısıtma skoru artık kullanılmıyor.
+if "isitma_score" in TUM_SUTUNLAR:
+    TUM_SUTUNLAR = [s for s in TUM_SUTUNLAR if s != "isitma_score"]
+
 
 # ═══════════════════════════════════════════════
 #  GENEL AYARLAR
@@ -92,7 +96,7 @@ FOTO_KLASOR    = os.path.join(ANA_KLASOR, "fotograflar_hepsi")
 LOG_DOSYASI    = os.path.join(ANA_KLASOR, "scraper_hepsi_log.txt")
 DURUM_DOSYASI  = os.path.join(ANA_KLASOR, "cekilen_hepsi.json")
 
-MAX_ILAN       = 3
+MAX_ILAN       = 2
 MAX_FOTO       = 10
 KAHVE_ADET     = 12
 KISA_BEKLE     = (5, 10)
@@ -100,6 +104,16 @@ UZUN_BEKLE     = (60, 130)
 FOTO_BEKLE     = (0.3, 0.7)
 
 os.makedirs(FOTO_KLASOR, exist_ok=True)
+
+
+RESIDENTIAL_DETAIL_CATEGORIES = {
+    "daire", "villa", "mustakil-ev", "yazlik", "residence", "rezidans",
+    "ciftlik-evi", "kosk", "konak", "yalı", "yali", "loft", "kooperatif",
+}
+NON_RESIDENTIAL_DETAIL_CATEGORIES = {
+    "arsa", "tarla", "isyeri", "dukkan", "magaza", "ofis", "depo", "fabrika",
+    "imalathane", "atolye", "bina", "otel", "turistik-tesis", "ciftlik",
+}
 
 # Hepsiemlak → Sahibinden özellik adı eşleştirmesi
 # Sağdaki = sahibinden TUM_OZELLIKLER'deki karşılığı
@@ -319,6 +333,9 @@ def liste_kaydir(driver):
 def linkleri_topla(driver) -> list:
     toplanan = []
     sayfa_no = 1
+    arama_url = driver.current_url
+    izinli_kategoriler = izinli_kategorileri_cek(arama_url)
+    log(f"Arama sayfası kategorileri: {', '.join(sorted(izinli_kategoriler))}")
 
     while len(toplanan) < MAX_ILAN:
         log(f"Sayfa {sayfa_no} taranıyor...")
@@ -345,8 +362,8 @@ def linkleri_topla(driver) -> list:
             if href.startswith("/"):
                 href = f"https://www.hepsiemlak.com{href}"
             # Sadece ilan detay URL'si al (liste/arama sayfaları değil)
-            if re.search(r"hepsiemlak\.com/.+-satilik/.+/\d+-\d+", href):
-                if href not in toplanan:
+            if re.search(r"hepsiemlak\.com/.+-(satilik|kiralik)/[^/]+/\d+-\d+$", href, re.I):
+                if ilan_kategori_uygun_mu(href, arama_url) and href not in toplanan:
                     toplanan.append(href)
                     yeni += 1
 
@@ -408,6 +425,160 @@ def tr_title_slug(slug: str) -> str:
         return "Bilinmiyor"
     return " ".join(kelime.capitalize() for kelime in slug.split())
 
+def detay_kategori_cek(url: str) -> str:
+    m = re.search(r"hepsiemlak\.com/[^/]+/([^/]+)/\d+-\d+$", url, re.I)
+    return (m.group(1).strip().lower() if m else "")
+
+def izinli_kategorileri_cek(arama_url: str) -> set:
+    arama_url = (arama_url or "").lower()
+
+    eslesmeler = {
+        "satilik-daire": {"daire"},
+        "kiralik-daire": {"daire"},
+        "satilik-villa": {"villa"},
+        "kiralik-villa": {"villa"},
+        "satilik-mustakil-ev": {"mustakil-ev"},
+        "kiralik-mustakil-ev": {"mustakil-ev"},
+        "satilik-residence": {"residence", "rezidans"},
+        "kiralik-residence": {"residence", "rezidans"},
+        "satilik-rezidans": {"residence", "rezidans"},
+        "kiralik-rezidans": {"residence", "rezidans"},
+        "satilik-yazlik": {"yazlik"},
+        "kiralik-yazlik": {"yazlik"},
+        "satilik-kooperatif": {"kooperatif"},
+        "kiralik-kooperatif": {"kooperatif"},
+        "satilik-konut": RESIDENTIAL_DETAIL_CATEGORIES,
+        "kiralik-konut": RESIDENTIAL_DETAIL_CATEGORIES,
+    }
+
+    for anahtar, izinliler in eslesmeler.items():
+        if anahtar in arama_url:
+            return set(izinliler)
+
+    return set(RESIDENTIAL_DETAIL_CATEGORIES)
+
+def ilan_kategori_uygun_mu(detay_url: str, arama_url: str = "") -> bool:
+    kategori = detay_kategori_cek(detay_url)
+    if not kategori:
+        return False
+    if kategori in NON_RESIDENTIAL_DETAIL_CATEGORIES:
+        return False
+    return kategori in izinli_kategorileri_cek(arama_url)
+
+def mahalle_normalize(metin: str) -> str:
+    metin = metin_norm(metin)
+    if not metin or metin == "Bilinmiyor":
+        return "Bilinmiyor"
+
+    metin = re.sub(r"\s+", " ", metin).strip(" ,.-")
+    metin = metin.replace("Mahalle", "Mah.")
+    metin = re.sub(r"\bMah\.?\b", "Mh.", metin, flags=re.I)
+    metin = re.sub(r"\bMh\.?\b", "Mh.", metin, flags=re.I)
+    metin = re.sub(r"\bKoyu\b", "Köyü", metin, flags=re.I)
+    metin = re.sub(r"\bKöy\b", "Köyü", metin, flags=re.I)
+
+    if re.search(r"\b(Köyü|Mevkii)\b", metin, re.I):
+        return metin
+
+    metin = re.sub(r"\s*Mh\.?$", "", metin, flags=re.I).strip()
+    return f"{metin} Mh." if metin else "Bilinmiyor"
+
+def yas_raw_bucketlestir(metin: str) -> str:
+    metin_alt = metin_norm(metin).lower()
+    if not metin_alt or metin_alt == "bilinmiyor":
+        return "Bilinmiyor"
+
+    if "sıfır" in metin_alt or metin_alt == "0":
+        return "0"
+    if re.search(r"1\s*-\s*5", metin_alt):
+        return "1-5 arası"
+    if re.search(r"6\s*-\s*10", metin_alt):
+        return "6-10 arası"
+    if re.search(r"11\s*-\s*15", metin_alt):
+        return "11-15 arası"
+    if re.search(r"16\s*-\s*20", metin_alt):
+        return "16-20 arası"
+    if re.search(r"21\s*-\s*25", metin_alt):
+        return "21-25 arası"
+    if re.search(r"26\s*-\s*30", metin_alt):
+        return "26-30 arası"
+    if re.search(r"(31\s*\+|31\s*ve\s*üzeri|31\s*ustu|31\s*üstü)", metin_alt):
+        return "31 ve üzeri"
+
+    yas = sayi_cikar(metin_alt)
+    if yas == 0:
+        return "0"
+    if 1 <= yas <= 5:
+        return "1-5 arası"
+    if yas <= 10:
+        return "6-10 arası"
+    if yas <= 15:
+        return "11-15 arası"
+    if yas <= 20:
+        return "16-20 arası"
+    if yas <= 25:
+        return "21-25 arası"
+    if yas <= 30:
+        return "26-30 arası"
+    return "31 ve üzeri"
+
+def kat_raw_normalize(metin: str) -> str:
+    metin = metin_norm(metin)
+    if not metin or metin == "Bilinmiyor":
+        return "Bilinmiyor"
+
+    metin_alt = metin.lower()
+    eslemeler = [
+        ("yüksek giriş", "Yüksek Giriş"),
+        ("giriş kat", "Giriş"),
+        ("zemin kat", "Zemin"),
+        ("bahçe katı", "Bahçe"),
+        ("çatı katı", "Çatı"),
+        ("bodrum kat", "Bodrum"),
+        ("zemin", "Zemin"),
+        ("giriş", "Giriş"),
+        ("bahçe", "Bahçe"),
+        ("çatı", "Çatı"),
+        ("bodrum", "Bodrum"),
+    ]
+    for anahtar, deger in eslemeler:
+        if anahtar in metin_alt:
+            return deger
+
+    m = re.search(r"(-?\d+)\.?\s*kat", metin_alt)
+    if m:
+        return m.group(1)
+
+    if re.fullmatch(r"-?\d+", metin):
+        return metin
+
+    return metin
+
+def sayi_tokenunu_coz(token: str) -> float:
+    token = str(token).strip()
+    if not token:
+        return 0.0
+    if "," in token and "." in token:
+        token = token.replace(".", "").replace(",", ".")
+    elif "," in token:
+        token = token.replace(",", ".")
+    elif re.fullmatch(r"\d{1,3}(?:\.\d{3})+", token):
+        token = token.replace(".", "")
+    return float(token)
+
+def isitma_birlestir(isitma_raw: str, yakit_raw: str) -> str:
+    isitma = temiz(isitma_raw, "Bilinmiyor")
+    yakit = temiz(yakit_raw, "Bilinmiyor")
+
+    isitma_l = isitma.lower()
+    if isitma == "Bilinmiyor":
+        return isitma
+    if any(k in isitma_l for k in ["doğalgaz", "dogalgaz", "elektrik", "kömür", "komur", "odun", "fuel", "güneş", "gunes"]):
+        return isitma
+    if yakit != "Bilinmiyor":
+        return f"{isitma} ({yakit})"
+    return isitma
+
 def url_lokasyon_cek(url: str):
     """URL'den il / ilçe / mahalle slug'ını çözmeye çalışır."""
     m = re.search(r"hepsiemlak\.com/([a-z0-9-]+)-(satilik|kiralik)/", url, re.I)
@@ -423,10 +594,8 @@ def url_lokasyon_cek(url: str):
     mahalle = None
 
     if len(parcalar) >= 3:
-        mahalle_slug = parcalar[2]
-        mahalle = tr_title_slug(mahalle_slug)
-        if mahalle and not re.search(r"\b(mah|mh|köy|koyu|köyü|mevkii)\b", mahalle, re.I):
-            mahalle = f"{mahalle} Mah."
+        mahalle_slug = "-".join(parcalar[2:])
+        mahalle = mahalle_normalize(tr_title_slug(mahalle_slug))
 
     return il or None, ilce or None, mahalle or None
 
@@ -437,7 +606,7 @@ def m2_coz(metin: str):
         return 0.0, 0.0
 
     temiz_metin = re.sub(r"m\s*[²2]", " ", metin)
-    sayilar = [float(s.replace(",", ".")) for s in re.findall(r"\d+(?:[\.,]\d+)?", temiz_metin)]
+    sayilar = [sayi_tokenunu_coz(s) for s in re.findall(r"\d{1,3}(?:\.\d{3})+|\d+(?:[\.,]\d+)?", temiz_metin)]
 
     if len(sayilar) >= 2:
         return sayilar[0], sayilar[1]
@@ -513,46 +682,20 @@ def kat_ordinal(metin: str) -> float:
     elif k >= 21:       return 2.0
     return 0.0
 
-def isitma_score(metin: str) -> float:
-    metin = str(metin).lower().strip()
-    puan = 0.0
-    if any(k in metin for k in ["kombi (doğalgaz)", "yerden", "pay ölçer", "ısı pompası", "jeotermal"]):
-        puan = 5.0
-    elif any(k in metin for k in ["merkezi", "kat kaloriferi", "vrv"]):
-        puan = 4.0
-    elif any(k in metin for k in ["kombi (elektrik)", "fancoil"]):
-        puan = 3.0
-    elif any(k in metin for k in ["doğalgaz sobası", "elektrikli radyatör", "şömine", "güneş enerjisi"]):
-        puan = 2.0
-    elif metin == "yok" or "soba" in metin:
-        puan = 1.0
-    if "klima" in metin:
-        puan = puan + 0.5 if puan >= 4.0 else max(puan, 3.0)
-    return puan
-def isitma_birlestir(isitma_raw: str, yakit_raw: str) -> str:
-    isitma = temiz(isitma_raw, "Bilinmiyor")
-    yakit = temiz(yakit_raw, "Bilinmiyor")
-
-    isitma_l = isitma.lower()
-    yakit_l = yakit.lower()
-
-    if isitma == "Bilinmiyor":
-        return isitma
-
-    # Zaten içinde yakıt bilgisi varsa tekrar ekleme
-    if any(k in isitma_l for k in ["doğalgaz", "dogalgaz", "elektrik", "kömür", "odun", "fuel-oil", "güneş"]):
-        return isitma
-
-    if yakit != "Bilinmiyor":
-        return f"{isitma} ({yakit})"
-
-    return isitma
 
 def isitma_sinif(metin: str) -> str:
     metin = str(metin).lower().strip()
+    if "yerden" in metin:
+        return "Yerden Isitma"
+    if "merkezi" in metin:
+        return "Merkezi"
+    if "kombi" in metin:
+        if "doğalgaz" in metin or "dogalgaz" in metin:
+            return "Kombi Dogalgaz"
+        if "elektrik" in metin:
+            return "Kombi Elektrik"
+        return "Kombi"
     eslesme = [
-        ("yerden", "Yerden Isitma"), ("merkezi", "Merkezi"),
-        ("kombi", "Kombi Dogalgaz" if "doğalgaz" in metin else "Kombi Elektrik"),
         ("kat kaloriferi", "Kat Kaloriferi"), ("vrv", "VRV"), ("fancoil", "Fancoil"),
         ("ısı pompası", "Isi Pompasi"), ("jeotermal", "Jeotermal"),
         ("doğalgaz sobası", "Dogalgaz Sobasi"), ("soba", "Soba"),
@@ -765,6 +908,17 @@ def ilan_parse_et(soup, url: str, ilan_id: str) -> dict | None:
     Hem JSON-LD hem de HTML tablosundan veri çeker.
     Geçersizse None döner.
     """
+    kategori_slug = detay_kategori_cek(url)
+    if kategori_slug in NON_RESIDENTIAL_DETAIL_CATEGORIES:
+        return None
+
+    baslik_metin = " ".join([
+        metin_norm(soup.title.get_text(" ", strip=True)) if soup.title else "",
+        *[metin_norm(h.get_text(" ", strip=True)) for h in soup.find_all(["h1", "h2"], limit=3)]
+    ]).lower()
+    if any(k in baslik_metin for k in ["satılık arsa", "satılık tarla", "kiralık arsa", "işyeri", "dükkan", "mağaza", "ofis", "depo"]):
+        return None
+
     # ── 1. JSON-LD bloklarını çek ───────────────────────────
     jld_bloklari = json_ld_cek(soup)
     main = jld_icerisinden_nesne_bul(jld_bloklari, ("Apartment", "Residence", "SingleFamilyResidence", "House", "Product"))
@@ -805,6 +959,7 @@ def ilan_parse_et(soup, url: str, ilan_id: str) -> dict | None:
         ilce = url_ilce
     if mahalle == "Bilinmiyor" and url_mahalle:
         mahalle = url_mahalle
+    mahalle = mahalle_normalize(mahalle)
 
     # ── 4. HTML spec tablosunu parse et ────────────────────
     specs = {}
@@ -849,17 +1004,20 @@ def ilan_parse_et(soup, url: str, ilan_id: str) -> dict | None:
                 return metin_norm(v)
         return "Bilinmiyor"
 
-    bina_yasi_raw     = s("Bina Yaşı", "İnşaat Yılı")
+    bina_yasi_raw = s("Bina Yaşı", "İnşaat Yılı")
     bulundugu_kat_raw = s("Bulunduğu Kat", "Kat")
-    isitma_tip_raw    = s("Isınma Tipi", "Isıtma", "Isınma")
-    yakit_raw         = s("Yakıt Tipi", "Yakıt")
-    isitma_raw        = isitma_birlestir(isitma_tip_raw, yakit_raw)
-    mutfak_raw        = s("Mutfak")
+    isitma_tip_raw = s("Isınma Tipi", "Isıtma", "Isınma")
+    yakit_raw = s("Yakıt Tipi", "Yakıt")
+    isitma_raw = isitma_birlestir(isitma_tip_raw, yakit_raw)
+    mutfak_raw = s("Mutfak")
 
     # Yıl geldiyse yaşa çevir
     if bina_yasi_raw.isdigit() and int(bina_yasi_raw) > 1900:
         yil_sayisal = datetime.now().year - int(bina_yasi_raw)
-        bina_yasi_raw = f"{yil_sayisal} Yıl"
+        bina_yasi_raw = f"{yil_sayisal} Yaşında"
+
+    bina_yasi_raw = yas_raw_bucketlestir(bina_yasi_raw)
+    bulundugu_kat_raw = kat_raw_normalize(bulundugu_kat_raw)
 
     # Brüt/Net m²
     brut_str = s("Brüt / Net M2", "m² (Brüt)", "Brüt M2", "Metrekare")
@@ -901,7 +1059,7 @@ def ilan_parse_et(soup, url: str, ilan_id: str) -> dict | None:
     sayfa_metni_alt = soup.get_text(" ", strip=True).lower()
     asansor_var = any("asansör" in o.lower() for o in secili_ozellikler) or ("asansör" in sayfa_metni_alt)
     otopark_var = any("otopark" in o.lower() for o in secili_ozellikler) or any(k in sayfa_metni_alt for k in ["otopark", "garaj", "kapalı garaj", "açık garaj"])
-    esyali_var = s("Eşya Durumu", "Eşyalı").lower() not in ["eşyalı değil", "bilinmiyor", "hayır"]
+    esyali_var = s("Eşya Durumu", "Eşyalı").lower() not in ["eşyalı değil", "eşyalı degil", "bilinmiyor", "hayır", "hayir", "boş", "yok"]
     balkon_var = any("balkon" in o.lower() for o in secili_ozellikler) or ("balkon" in sayfa_metni_alt)
 
     banyo_sayisi = sayi_cikar(s("Banyo Sayısı"))
@@ -928,7 +1086,6 @@ def ilan_parse_et(soup, url: str, ilan_id: str) -> dict | None:
         "bulundugu_kat_no": kat_no(bulundugu_kat_raw),
         "bulundugu_kat_ordinal": kat_ordinal(bulundugu_kat_raw),
         "kat_sayisi": sayi_cikar(s("Kat Sayısı", "Toplam Kat")),
-        "isitma_score": isitma_score(isitma_raw),
         "banyo_sayisi": banyo_sayisi,
         "mutfak_acik_mi": 1.0 if "açık" in mutfak_raw.lower() else 0.0,
         "balkon": 1.0 if balkon_var else 0.0,
